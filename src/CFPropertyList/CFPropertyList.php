@@ -370,7 +370,7 @@ class CFPropertyList extends CFBinaryPropertyList implements Iterator
 
           // read <key> if possible
             if ($ps && $ps->nodeName == 'key') {
-                $key = ($ps->firstChild) ? $ps->firstChild->nodeValue : '';
+                $key = ($ps->firstChild) ? $ps->firstChild->nodeValue : 'NA';
             }
 
             switch ($n->nodeName) {
@@ -381,7 +381,7 @@ class CFPropertyList extends CFBinaryPropertyList implements Iterator
                     $value = new $class($n->nodeValue, true);
                     break;
                 case 'string':
-                    $value = new $class($n->nodeValue);
+                    $value = new $class(isset($n->nodeValue) ? $n->nodeValue : 'NA');
                     break;
 
                 case 'real':
