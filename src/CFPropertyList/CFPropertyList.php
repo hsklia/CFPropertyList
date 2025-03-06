@@ -346,80 +346,99 @@ class CFPropertyList extends CFBinaryPropertyList implements Iterator
    * @param CFDictionary|CFArray|CFPropertyList $parent
    * @return void
    */
+    
     protected function import(DOMNode $node, $parent)
-    {
-        // abort if there are no children
-        if (!$node->childNodes->length) {
-            return;
+{
+    // abort if there are no children
+    if (!$node->childNodes->length) {
+        return;
+    }
+
+    $skipNextValue = false; // Flag to skip the value node following an empty key
+
+    foreach ($node->childNodes as $n) {
+        // If we previously flagged a skip, skip this value node and reset the flag
+        if ($skipNextValue) {
+            $skipNextValue = false;
+            continue;
         }
 
-        foreach ($node->childNodes as $n) {
-            // skip if we can't handle the element
-            if (!isset(self::$types[$n->nodeName])) {
-                continue;
+        // Handle <key> nodes separately to detect empty keys
+        if ($n->nodeName == 'key') {
+            if (!$n->hasChildNodes() || trim($n->firstChild->nodeValue) === '') {
+                $skipNextValue = true; // Flag to skip the next value node
             }
+            continue; // Move to the next node (should be the value)
+        }
 
-            $class = __NAMESPACE__ . '\\' . self::$types[$n->nodeName];
-            $key = null;
+        // Skip if we can't handle the element (non-key, non-value nodes like #text)
+        if (!isset(self::$types[$n->nodeName])) {
+            continue;
+        }
 
-            // find previous <key> if possible
-            $ps = $n->previousSibling;
-            while ($ps && $ps->nodeName == '#text' && $ps->previousSibling) {
-                $ps = $ps->previousSibling;
-            }
+        $class = __NAMESPACE__ . '\\' . self::$types[$n->nodeName];
+        $key = null;
 
-            // read <key> if possible
-            if ($ps && $ps->nodeName == 'key') {
-                // Check if the key is empty; if so, skip this pair
-                if (!$ps->hasChildNodes() || trim($ps->firstChild->nodeValue) === '') {
-                    continue; // Skip this value since the key is empty
-                }
+        // Find previous <key> if possible
+        $ps = $n->previousSibling;
+        while ($ps && $ps->nodeName == '#text' && $ps->previousSibling) {
+            $ps = $ps->previousSibling;
+        }
+
+        // Read <key> if possible, but only if it’s not empty
+        if ($ps && $ps->nodeName == 'key') {
+            if ($ps->hasChildNodes() && trim($ps->firstChild->nodeValue) !== '') {
                 $key = $ps->firstChild->nodeValue;
             }
+        }
 
-            switch ($n->nodeName) {
-                case 'date':
-                    $value = new $class(CFDate::dateValue($n->nodeValue));
-                    break;
-                case 'data':
-                    $value = new $class($n->nodeValue, true);
-                    break;
-                case 'string':
-                    $value = new $class($n->nodeValue);
-                    break;
-                case 'real':
-                case 'integer':
-                    $value = new $class($n->nodeName == 'real' ? floatval($n->nodeValue) : intval($n->nodeValue));
-                    break;
-                case 'true':
-                case 'false':
-                    $value = new $class($n->nodeName == 'true');
-                    break;
-                case 'array':
-                case 'dict':
-                    $value = new $class();
-                    $this->import($n, $value);
+        // Create the CFType based on the node type
+        switch ($n->nodeName) {
+            case 'date':
+                $value = new $class(CFDate::dateValue($n->nodeValue));
+                break;
+            case 'data':
+                $value = new $class($n->nodeValue, true);
+                break;
+            case 'string':
+                $value = new $class($n->nodeValue);
+                break;
+            case 'real':
+            case 'integer':
+                $value = new $class($n->nodeName == 'real' ? floatval($n->nodeValue) : intval($n->nodeValue));
+                break;
+            case 'true':
+            case 'false':
+                $value = new $class($n->nodeName == 'true');
+                break;
+            case 'array':
+            case 'dict':
+                $value = new $class();
+                $this->import($n, $value);
 
-                    if ($value instanceof CFDictionary) {
-                        $hsh = $value->getValue();
-                        if (isset($hsh['CF$UID']) && count($hsh) == 1) {
-                            $value = new CFUid($hsh['CF$UID']->getValue());
-                        }
+                if ($value instanceof CFDictionary) {
+                    $hsh = $value->getValue();
+                    if (isset($hsh['CF$UID']) && count($hsh) == 1) {
+                        $value = new CFUid($hsh['CF$UID']->getValue());
                     }
-                    break;
-            }
-
-            if ($parent instanceof CFDictionary) {
-                // Dictionaries need a key; only add if key is non-null
-                if ($key !== null) {
-                    $parent->add($key, $value);
                 }
-            } else {
-                // others don't need a key
-                $parent->add($value);
+                break;
+        }
+
+        // Add to parent based on its type
+        if ($parent instanceof CFDictionary) {
+            // Dictionaries need a key; only add if key is non-null
+            if ($key !== null) {
+                $parent->add($key, $value);
             }
+        } else {
+            // Arrays or root PropertyList don’t need a key
+            $parent->add($value);
         }
     }
+}
+
+
 
   /**
    * Convert CFPropertyList to XML and save to file.
