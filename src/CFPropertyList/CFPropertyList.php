@@ -348,29 +348,33 @@ class CFPropertyList extends CFBinaryPropertyList implements Iterator
    */
     protected function import(DOMNode $node, $parent)
     {
-      // abort if there are no children
+        // abort if there are no children
         if (!$node->childNodes->length) {
             return;
         }
 
         foreach ($node->childNodes as $n) {
-          // skip if we can't handle the element
+            // skip if we can't handle the element
             if (!isset(self::$types[$n->nodeName])) {
                 continue;
             }
 
-            $class = __NAMESPACE__ . '\\'.self::$types[$n->nodeName];
+            $class = __NAMESPACE__ . '\\' . self::$types[$n->nodeName];
             $key = null;
 
-          // find previous <key> if possible
+            // find previous <key> if possible
             $ps = $n->previousSibling;
             while ($ps && $ps->nodeName == '#text' && $ps->previousSibling) {
                 $ps = $ps->previousSibling;
             }
 
-          // read <key> if possible
+            // read <key> if possible
             if ($ps && $ps->nodeName == 'key') {
-                $key = ($ps->firstChild) ? $ps->firstChild->nodeValue : 'NA';
+                // Check if the key is empty; if so, skip this pair
+                if (!$ps->hasChildNodes() || trim($ps->firstChild->nodeValue) === '') {
+                    continue; // Skip this value since the key is empty
+                }
+                $key = $ps->firstChild->nodeValue;
             }
 
             switch ($n->nodeName) {
@@ -381,19 +385,16 @@ class CFPropertyList extends CFBinaryPropertyList implements Iterator
                     $value = new $class($n->nodeValue, true);
                     break;
                 case 'string':
-                    $value = new $class(isset($n->nodeValue) ? $n->nodeValue : 'NA');
+                    $value = new $class($n->nodeValue);
                     break;
-
                 case 'real':
                 case 'integer':
                     $value = new $class($n->nodeName == 'real' ? floatval($n->nodeValue) : intval($n->nodeValue));
                     break;
-
                 case 'true':
                 case 'false':
                     $value = new $class($n->nodeName == 'true');
                     break;
-
                 case 'array':
                 case 'dict':
                     $value = new $class();
@@ -405,15 +406,16 @@ class CFPropertyList extends CFBinaryPropertyList implements Iterator
                             $value = new CFUid($hsh['CF$UID']->getValue());
                         }
                     }
-
                     break;
             }
 
             if ($parent instanceof CFDictionary) {
-                // Dictionaries need a key
-                $parent->add($key, $value);
+                // Dictionaries need a key; only add if key is non-null
+                if ($key !== null) {
+                    $parent->add($key, $value);
+                }
             } else {
-                // others don't
+                // others don't need a key
                 $parent->add($value);
             }
         }
